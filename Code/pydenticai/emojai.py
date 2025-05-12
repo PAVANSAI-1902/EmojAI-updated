@@ -1,12 +1,7 @@
-import os
 import random
 import re
 from pydantic import BaseModel
-from typing import List
-from dotenv import load_dotenv
-
-# Load environment variables (keep if you use .env for other things)
-load_dotenv()
+from typing import List, Tuple, Optional
 
 # --------------------------
 # Pydantic Models
@@ -14,221 +9,246 @@ load_dotenv()
 class EmojiSuggestion(BaseModel):
     emojis: List[str]
     message: str
+    explanation: Optional[str] = None
 
 # --------------------------
 # Sentiment Analysis
 # --------------------------
 class SentimentAnalyzer:
+    """Analyzes text sentiment and suggests appropriate emojis."""
+
     def __init__(self):
-        # Updated excited strong list to include moderate ones for more options
+        # Emoji library with unique emojis per category and intensity
         self.emoji_library = {
             'happy': {
                 'mild': ["😊", "🙂", "😄", "😀"],
-                'moderate': ["😃", "😁", "😆", "😊"],
+                'moderate': ["😃", "😁", "😆"],
                 'strong': ["🤩", "🥳", "😻", "🎉", "🎊"]
             },
             'sad': {
                 'mild': ["😔", "😞", "🥺", "😟"],
-                'moderate': ["😢", "😥", "😭", "愁"],
-                'strong': ["😩", "😣", "😿", "😭", "💔"]
+                'moderate': ["😢", "😥", "😭"],
+                'strong': ["😩", "😣", "😿", "💔"]
             },
             'love': {
                 'mild': ["🥰", "😍", "❤️", "😘"],
                 'moderate': ["💖", "💕", "💞", "💓"],
-                'strong': ["💘", "💝", "💟", "🥰", "😍"]
+                'strong': ["💘", "💝", "💟"]
             },
             'excited': {
-                'mild': ["😎", "😏", "😺", "👍"],
+                'mild': ["😎", "😏", "😺", "🤩"],
                 'moderate': ["🤩", "🥳", "😻", "🙌"],
-                'strong': ["🤩", "🥳", "😻", "🙌", "🎉", "🎊", "😸", "🚀", "🔥"]
+                'strong': ["🚀", "🔥", "🎉", "🎊"]
             },
             'greeting': {
                 'mild': ["👋", "🤚", "🖐️", "🤝"],
                 'moderate': ["✌️", "🤞", "👌", "🤙"],
-                'strong': ["🤟", "🖖", "✋", "👊", "🙏"]
+                'strong': ["🤟", "🖖", "✋", "🙏"]
             },
             'angry': {
-                'mild': ["😠", "😒", "😤", "🙄"],
-                'moderate': ["😡", "🤬", "😠", "😤"],
-                'strong': ["👿", "😠", "😡", "🤬"]
+                'mild': ["😠", "😒", "😤"],
+                'moderate': ["😡", "🤬"],
+                'strong': ["👿"]
             },
             'danger': {
                 'mild': ["⚠️", "🚨", "🆘", "🛑"],
                 'moderate': ["😰", "😨", "😬", "😱"],
-                'strong': ["😱", "🔥", "🆘", "💣", "💥"]
+                'strong': ["🔥", "💣", "💥"]
             },
             'confused': {
                 'mild': ["😕", "🤔", "🧐", "🤷"],
                 'moderate': ["😖", "😣", "🤨", "😟"],
-                'strong': ["😵", "😓", "🤯", "🤔", "❓"]
+                'strong': ["😵", "😓", "🤯", "❓"]
             },
             'neutral': {
                 'mild': ["😐", "😑", "😶", "😌"],
-                'moderate': ["😒", "🙄", "😏", " bland"],
-                'strong': ["🤨", "🧐", "😶‍🌫️", "🗿", "🧊"]
+                'moderate': ["😒", "🙄", "😏", "😶"],
+                'strong': ["🤨", "🧐", "🗿", "🧊"]
+            },
+            'mixed': {
+                'happy_sad': ["😊😢", "😄😔", "🥲"],
+                'excited_nervous': ["🤩😬", "😃😅", "😁😰"],
+                'love_hate': ["🥰😒", "😍🙄"],
+                'angry_confused': ["😡😕", "🤬🤔"]
             }
         }
 
-        # Added "marvelous" to happy, love, excited keywords
-        # **ADDED "laughing" to the happy keywords**
+        # Sentiment keywords
         self.sentiment_map = {
-            'happy': ["happy", "joy", "good", "great", "awesome", "cheerful", "glad", "fun", "party", "friends", "enjoying", "amazing", "wonderful", "nice", "pleased", "satisfied", "excited", "thrilled", "elated", "jubilant", "marvelous", "laughing", "exited"],
-            'sad': ["sad", "bad", "upset", "unhappy", "depressed", "sorry", "down", "terrible", "horrible", "lose", "miss", "lonely", "grief", "woe"],
-            'love': ["love", "heart", "adore", "cherish", "care", "affection", "like", "favorite", "beautiful", "fond", "attached", "crush", "passion", "romance", "sweetheart", "darling", "marvelous"],
-            'excited': ["excited", "wow", "amazing", "thrilled", "fun", "enthusiastic", "yay", "hooray", "cant wait", "soon", "ready", "eager", "anticipating", "adventure", "journey", "explore", "marvelous"],
-            'greeting': ["hello", "hi", "hey", "greetings", "yo", "sup", "morning", "afternoon", "evening", "goodbye", "bye", "ciao", "hola"],
-            'angry': ["angry", "furious", "mad", "irritated", "annoyed", "frustrated", "pissed", "rage", "enraged", "livid", "upset", "hate", "dislike"],
-            'danger': ["danger", "warning", "alert", "emergency", "urgent", "stop", "careful", "risk", "problem", "issue", "hazard", "threat", "unsafe"],
-            'confused': ["confused", "why", "huh", "what", "puzzled", "dont understand", "unclear", "question", "?", "explain", "baffled", "perplexed"]
+            'happy': ["happy", "joy", "good", "great", "awesome", "cheerful"],
+            'sad': ["sad", "bad", "upset", "unhappy", "depressed"],
+            'love': ["love", "heart", "adore", "cherish"],
+            'excited': ["excited", "wow", "amazing", "thrilled"],
+            'greeting': ["hello", "hi", "hey", "greetings"],
+            'angry': ["angry", "furious", "mad", "irritated"],
+            'danger': ["danger", "warning", "alert", "emergency"],
+            'confused': ["confused", "why", "huh", "what"],
+            'nervous': ["nervous", "anxious", "worried", "apprehensive"]
         }
 
-        # Keywords that indicate a strong sentiment even without modifiers
-        self.strong_keywords = {"marvelous", "amazing", "wonderful", "terrible", "horrible", "furious", "enraged", "urgent", "emergency", "shocked", "astounded"} # "laughing" not considered inherently strong here
+        # Mixed emotion patterns
+        self.mixed_patterns = [
+            ({"happy", "sad"}, "happy_sad"),
+            ({"excited", "nervous"}, "excited_nervous"),
+            ({"love", "angry"}, "love_hate"),
+            ({"angry", "confused"}, "angry_confused")
+        ]
+
+        # Strong keywords in lowercase
+        self.strong_keywords = {
+            "marvelous", "amazing", "wonderful", "terrible",
+            "horrible", "furious", "enraged", "urgent"
+        }
 
         self.intensity_words = {
-            'slightly': 1, 'a little': 1, 'very': 2, 'really': 2, 'pretty': 2,
-            'extremely': 3, 'seriously': 3, 'so': 2, 'completely': 3,
-            'totally': 3, 'absolutely': 3, 'quite': 2
+            'slightly': 1, 'a little': 1, 'very': 2, 'really': 2,
+            'extremely': 3, 'seriously': 3, 'so': 2, 'completely': 3
         }
 
         self.intensity_levels = {1: 'mild', 2: 'moderate', 3: 'strong'}
 
+        # Sentiment priority with default
         self.sentiment_priority = {
-            'excited': 1, 'love': 2, 'happy': 3, 'angry': 4, 'danger': 5,
-            'sad': 6, 'greeting': 7, 'confused': 8, 'neutral': 9
+            'excited': 1, 'love': 2, 'happy': 3, 'angry': 4,
+            'danger': 5, 'sad': 6, 'nervous': 7, 'greeting': 8,
+            'confused': 9, 'neutral': 10
         }
 
-    def detect_sentiment(self, message: str) -> List[tuple[str, int]]:
+    def detect_sentiment(self, message: str) -> List[Tuple[str, int]]:
+        """Detects sentiments and their intensities in a message."""
         lower_msg = message.lower()
         words = re.findall(r'\b\w+\b|[^\w\s]', lower_msg)
         sentiment_intensities = {}
 
-        # Pass 1: Detect sentiments and set base/strong intensity
+        # Detect base sentiments
         for sent, keywords in self.sentiment_map.items():
             for keyword in keywords:
                 if re.search(r'\b' + re.escape(keyword) + r'\b', lower_msg):
-                    base_intensity = 1
-                    if keyword in self.strong_keywords:
-                        base_intensity = 3 # Strong keywords start at level 3
-
-                    # Set or update intensity if current match is stronger
+                    base_intensity = 3 if keyword in self.strong_keywords else 1
                     if sent not in sentiment_intensities or base_intensity > sentiment_intensities[sent]:
                         sentiment_intensities[sent] = base_intensity
 
-        # Pass 2: Adjust intensity based on preceding intensity words
-        words_with_index = list(enumerate(words))
-        for sent, current_intensity in list(sentiment_intensities.items()): # Iterate over a copy
-             for keyword in self.sentiment_map.get(sent, []): # Get keywords for this detected sentiment
-                keyword_indices = [i for i, word in words_with_index if word == keyword]
-                for keyword_idx in keyword_indices:
-                    for i in range(max(0, keyword_idx - 3), keyword_idx):
-                        word_before = words[i]
-                        if word_before in self.intensity_words:
-                            # Take the max between existing intensity and intensity word
-                            sentiment_intensities[sent] = max(current_intensity, self.intensity_words[word_before])
-
-        detected_sentiments = [(sent, intensity) for sent, intensity in sentiment_intensities.items()]
+        # Adjust intensity based on modifiers
+        for sent, current_intensity in list(sentiment_intensities.items()):
+            for keyword in self.sentiment_map.get(sent, []):
+                keyword_indices = [i for i, word in enumerate(words) if word == keyword]
+                for idx in keyword_indices:
+                    for i in range(max(0, idx - 3), idx):
+                        if words[i] in self.intensity_words:
+                            sentiment_intensities[sent] = max(
+                                current_intensity,
+                                self.intensity_words[words[i]]
+                            )
 
         # Handle question marks
-        if "?" in message and 'confused' not in [s[0] for s in detected_sentiments]:
-             detected_sentiments.append(('confused', 1))
+        if "?" in message and 'confused' not in sentiment_intensities:
+            sentiment_intensities['confused'] = 1
 
-        # Add neutral if no other specific sentiment detected
-        if not any(s[0] not in ['neutral', 'greeting'] for s in detected_sentiments):
-             if 'neutral' not in [s[0] for s in detected_sentiments]:
-                  detected_sentiments.append(('neutral', 1))
+        # Add neutral if no strong sentiment detected
+        if not sentiment_intensities:
+            sentiment_intensities['neutral'] = 1
 
-        # Sort and unique
-        detected_sentiments.sort(key=lambda x: self.sentiment_priority.get(x[0], 99))
-        unique_sentiments = {}
-        for sent, intensity in detected_sentiments:
-             if sent not in unique_sentiments or intensity > unique_sentiments[sent][1]:
-                 unique_sentiments[sent] = (sent, intensity)
-        detected_sentiments = list(unique_sentiments.values())
-        detected_sentiments.sort(key=lambda x: self.sentiment_priority.get(x[0], 99))
+        # Sort by priority
+        detected_sentiments = sorted(
+            sentiment_intensities.items(),
+            key=lambda x: self.sentiment_priority.get(x[0], 99)
+        )
 
         return detected_sentiments
 
+    def get_mixed_emotion(self, sentiments: List[Tuple[str, int]]) -> Optional[str]:
+        """Identifies mixed emotions based on detected sentiments."""
+        sentiment_set = {s[0] for s in sentiments}
+        for pattern, mixed_type in self.mixed_patterns:
+            if pattern.issubset(sentiment_set):
+                # Allow mixed emotions for any intensity (≥1) when both sentiments are present
+                intensities = {s[0]: s[1] for s in sentiments}
+                if all(intensities.get(sent, 0) >= 1 for sent in pattern):
+                    return mixed_type
+        return None
 
-    def get_emojis(self, sentiments: List[tuple[str, int]]) -> List[str]:
-        emojis = []
-        sentiment_intensity_map = dict(sentiments)
-        unique_sentiments = list(sentiment_intensity_map.keys())
-        emoji_count_target = len(unique_sentiments) if unique_sentiments else 1
+    def get_emojis(self, sentiments: List[Tuple[str, int]]) -> Tuple[List[str], Optional[str]]:
+        """Selects emojis based on detected sentiments."""
+        if not sentiments:
+            return [random.choice(self.emoji_library['neutral']['mild'])], "No sentiment detected, defaulting to neutral."
 
-        used_emojis = set()
+        # Check for mixed emotions
+        mixed_type = self.get_mixed_emotion(sentiments)
+        if mixed_type:
+            mixed_emojis = self.emoji_library['mixed'].get(mixed_type, [])
+            if mixed_emojis:
+                explanation = f"Mixed emotions detected: {mixed_type.replace('_', ' + ')}."
+                return [random.choice(mixed_emojis)], explanation
 
-        for sentiment in unique_sentiments:
-            specific_intensity = sentiment_intensity_map.get(sentiment, 1)
-            specific_intensity_level = self.intensity_levels.get(specific_intensity, 'mild')
+        # Primary sentiment logic
+        primary_sentiment, primary_intensity = sentiments[0]
+        intensity_level = self.intensity_levels.get(primary_intensity, 'mild')
 
-            # Get emojis for this specific sentiment and its detected intensity level
-            available_emojis = self.emoji_library.get(sentiment, {}).get(specific_intensity_level, self.emoji_library['neutral']['mild'])
+        # Fallback to neutral if sentiment not in emoji_library
+        emoji_options = self.emoji_library.get(primary_sentiment, {}).get(
+            intensity_level, self.emoji_library['neutral']['mild']
+        )
+        primary_emoji = random.choice(emoji_options)
 
-            # Fallback if specific level is empty for this sentiment, try moderate/strong/mild in order
-            if not available_emojis:
-                 for level in ['strong', 'moderate', 'mild']:
-                      available_emojis = self.emoji_library.get(sentiment, {}).get(level, [])
-                      if available_emojis:
-                           break
-                 if not available_emojis: # Final fallback to neutral if still empty
-                      available_emojis = self.emoji_library['neutral']['mild']
+        # Secondary emoji if applicable
+        secondary_emoji = None
+        explanation = f"Primary sentiment: {primary_sentiment} ({intensity_level})."
+        if len(sentiments) > 1 and sentiments[1][1] >= 2:
+            secondary_sentiment, secondary_intensity = sentiments[1]
+            sec_intensity_level = self.intensity_levels.get(secondary_intensity, 'mild')
+            secondary_options = self.emoji_library.get(secondary_sentiment, {}).get(
+                sec_intensity_level, []
+            )
+            if secondary_options:
+                secondary_emoji = random.choice(secondary_options)
+                explanation += f" Secondary sentiment: {secondary_sentiment} ({sec_intensity_level})."
+        elif len(sentiments) > 1:
+            explanation += f" Secondary sentiment ({sentiments[1][0]}) not strong enough for emoji."
 
+        emojis = [primary_emoji]
+        if secondary_emoji:
+            emojis.append(secondary_emoji)
 
-            chosen_emoji = None
-            attempts = 0
-            while chosen_emoji is None and attempts < len(available_emojis) * 3:
-                 potential_emoji = random.choice(available_emojis)
-                 if potential_emoji not in used_emojis:
-                     chosen_emoji = potential_emoji
-                 attempts += 1
-
-            if chosen_emoji is not None:
-                used_emojis.add(chosen_emoji)
-                emojis.append(chosen_emoji)
-
-        # Fill remaining spots with neutral if target not met
-        while len(emojis) < emoji_count_target:
-             neutral_options = [e for e in self.emoji_library['neutral']['mild'] if e not in used_emojis]
-             if neutral_options:
-                 chosen_emoji = random.choice(neutral_options)
-                 used_emojis.add(chosen_emoji)
-                 emojis.append(chosen_emoji)
-             else:
-                 break
-
-        # Ensure at least one emoji if nothing was added
-        if not emojis:
-             emojis.append(random.choice(self.emoji_library['neutral']['mild']))
-
-        return emojis
+        return emojis, explanation
 
 # --------------------------
-# AI Agent (Simplified)
+# AI Agent
 # --------------------------
 class AIAgent:
+    """Generates emoji suggestions based on text analysis."""
+
     def __init__(self):
         self.sentiment = SentimentAnalyzer()
 
     def suggest_emojis(self, message: str) -> EmojiSuggestion:
+        """Suggests emojis for a given message."""
         try:
             sentiments = self.sentiment.detect_sentiment(message)
-            emojis = self.sentiment.get_emojis(sentiments)
-            return EmojiSuggestion(emojis=emojis, message=message)
+            emojis, explanation = self.sentiment.get_emojis(sentiments)
+            return EmojiSuggestion(
+                emojis=emojis,
+                message=message,
+                explanation=explanation
+            )
         except Exception as e:
-            print(f"An error occurred during emoji suggestion: {e}")
-            return EmojiSuggestion(emojis=["❓"], message=message)
+            print(f"Error in emoji suggestion: {e}")
+            return EmojiSuggestion(
+                emojis=["❓"],
+                message=message,
+                explanation="Error processing message"
+            )
 
 # --------------------------
 # CLI Interface
 # --------------------------
 def main():
-    print("\n🌟 Ultimate Emoji Suggester 🌟")
+    """Runs the CLI interface for emoji suggestion."""
+    print("\n🌟 Advanced Emoji Suggester 🌟")
     print("----------------------------")
-    print("Enter a message to get emoji suggestions!")
+    print("Now with mixed emotion support!")
     print("Type 'q' to quit\n")
 
-    agent = AIAgent() # Simplified agent
+    agent = AIAgent()
 
     while True:
         try:
@@ -241,20 +261,22 @@ def main():
                 print("Please enter a message.")
                 continue
 
+            if len(message) > 1000:
+                print("Message too long. Please keep it under 1000 characters.")
+                continue
+
             suggestion = agent.suggest_emojis(message)
             print(f"\nFor: {suggestion.message}")
             print("Emojis:", " ".join(suggestion.emojis))
-
+            if suggestion.explanation:
+                print("Note:", suggestion.explanation)
             print("="*50 + "\n")
 
-        except EOFError:
-             print("\nGoodbye! 👋")
-             break
-        except KeyboardInterrupt:
-             print("\nGoodbye! 👋")
-             break
+        except (EOFError, KeyboardInterrupt):
+            print("\nGoodbye! 👋")
+            break
         except Exception as e:
-             print(f"An unexpected error occurred in the CLI: {e}")
+            print(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
